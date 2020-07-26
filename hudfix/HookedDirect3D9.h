@@ -11,7 +11,6 @@ class HookedDirect3D9 : public IDirect3D9
 public:
 	HookedDirect3D9(IDirect3D9* d3d) : m_d3d(d3d)
 	{
-		// log("Creating HookedDirect3D9 instance...");
 	}
 
 	/*** IUnknown methods ***/
@@ -102,14 +101,12 @@ public:
 
 	HRESULT STDMETHODCALLTYPE CreateDevice(UINT Adapter, D3DDEVTYPE DeviceType, HWND hFocusWindow, DWORD BehaviorFlags, D3DPRESENT_PARAMETERS* pPresentationParameters, IDirect3DDevice9** ppReturnedDeviceInterface)
 	{
-		// log("Calling original CreateDevice...");
 		HRESULT hr = m_d3d->CreateDevice(Adapter, DeviceType, hFocusWindow, BehaviorFlags,
 			pPresentationParameters, ppReturnedDeviceInterface);
 
 		if (SUCCEEDED(hr))
 		{
 			// Return hooked device
-			// log("Succeded, calling HookedDirect3DDevice9 constructor...");
 			*ppReturnedDeviceInterface = new HookedDirect3DDevice9(this, *ppReturnedDeviceInterface, pPresentationParameters);
 
 		}

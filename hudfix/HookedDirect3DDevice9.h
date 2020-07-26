@@ -16,11 +16,9 @@ public:
 		log("Creating HookedDirect3DDevice9 instance");
 		m_szx = pPresentationParameters->BackBufferWidth;
 		m_szy = pPresentationParameters->BackBufferHeight;
-		float newWidth = 600 * GetAspectRatio();
-		float newMouseOffset = - newWidth / 2;
-		hudWidth = *(reinterpret_cast<DWORD*>(&newWidth));
-		mouseOffset = *(reinterpret_cast<DWORD*>(&newMouseOffset));
 		log("szx=%u, szy=%u", m_szx, m_szy);
+		float ascpect_ratio = (float)m_szx / (float)m_szy;
+		update_offsets(ascpect_ratio);
 	}
 
 	~HookedDirect3DDevice9()
@@ -123,13 +121,11 @@ public:
 		log("Reseting presentatnion parameters");
 		m_szx = pPresentationParameters->BackBufferWidth;
 		m_szy = pPresentationParameters->BackBufferHeight;
-		if (m_szx != 0 && m_szy != 0) {
-			float newWidth = 600 * GetAspectRatio();
-			float newMouseOffset = - newWidth / 2;
-			hudWidth = *(reinterpret_cast<DWORD*>(&newWidth));
-			mouseOffset = *(reinterpret_cast<DWORD*>(&newMouseOffset));
-		}
 		log("szx=%u, szy=%u", m_szx, m_szy);
+		if (m_szx != 0 && m_szy != 0) {
+			float ascpect_ratio = (float)m_szx / (float)m_szy;
+			update_offsets(ascpect_ratio);
+		}
 		return m_device->Reset(pPresentationParameters);
 	}
 
@@ -642,13 +638,6 @@ public:
 	{
 		return m_device->CreateQuery(Type, ppQuery);
 	}
-
-	/*** Custom methods ***/
-	float GetAspectRatio() const
-	{
-		return (float)m_szx / (float)m_szy;
-	}
-
 
 private:
 
