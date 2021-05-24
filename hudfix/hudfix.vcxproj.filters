@@ -33,6 +33,9 @@
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="HudNodes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -46,6 +49,9 @@
     </ClCompile>
     <ClCompile Include="HookedDirect3DDevice9.h">
       <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="HudNodes.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

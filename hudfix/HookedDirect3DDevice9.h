@@ -13,10 +13,9 @@ public:
 
 	HookedDirect3DDevice9(IDirect3D9* d3d, IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* pPresentationParameters) : m_d3d(d3d), m_device(device)
 	{
-		log("Creating HookedDirect3DDevice9 instance");
 		m_szx = pPresentationParameters->BackBufferWidth;
 		m_szy = pPresentationParameters->BackBufferHeight;
-		log("szx=%u, szy=%u", m_szx, m_szy);
+		log("Direct3DDevice9() szx=%u, szy=%u", m_szx, m_szy);
 		float ascpect_ratio = (float)m_szx / (float)m_szy;
 		update_offsets(ascpect_ratio);
 	}
@@ -118,10 +117,9 @@ public:
 
 	STDMETHOD(Reset)(THIS_ D3DPRESENT_PARAMETERS* pPresentationParameters)
 	{
-		log("Reseting presentatnion parameters");
 		m_szx = pPresentationParameters->BackBufferWidth;
 		m_szy = pPresentationParameters->BackBufferHeight;
-		log("szx=%u, szy=%u", m_szx, m_szy);
+		log("Reset() szx=%u, szy=%u", m_szx, m_szy);
 		if (m_szx != 0 && m_szy != 0) {
 			float ascpect_ratio = (float)m_szx / (float)m_szy;
 			update_offsets(ascpect_ratio);
