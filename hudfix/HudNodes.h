@@ -65,7 +65,6 @@ namespace meme {
 		float* width;
 		float* height;
 		char* name;
-		DWORD* getMatchingSibling(DWORD*, DWORD);
 	public:
 		HudNode(Node*);
 		HudNode(SplitNode*);

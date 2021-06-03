@@ -153,17 +153,15 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="CRenderer.h" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="HookedDirect3D9.h" />
     <ClInclude Include="HudNodes.h" />
-    <ClInclude Include="IAT.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="HookedDirect3DDevice9.h" />
     <ClCompile Include="HudNodes.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -171,7 +169,6 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="IAT.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="hudfix.rc" />
