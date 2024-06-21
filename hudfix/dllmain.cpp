@@ -1,7 +1,8 @@
 #include "pch.h"
-#include "main.h"
+
 #include "HudNodes.h"
 #include "CRenderer.h"
+#include "CHudManager.h"
 #include <string>
 #include <vector>
 #include <sstream>
@@ -9,18 +10,20 @@
 #include <set>
 #include <fstream>
 
-#define CONFIG_PATH "hud_config.txt"
+static_assert(sizeof(void*) == 4, "don't");
 
-// Globals
-const DWORD g_hudManagerRefreshHookEntry = 0x75C9D6;
-const DWORD g_hudManagerRefreshHookExit = 0x75C9D6 + 5;
+#define CONFIG_PATH L"hud_config.txt"
 
+// config
 std::set<std::string> g_nodesRight;
 std::set<std::string> g_nodesLeft;
 std::set<std::string> g_nodesFillRight;
 std::set<std::string> g_nodesFillLeft;
 bool g_offsetMinimap = true;
+
+// logging
 std::ofstream g_logfile;
+void __cdecl log(const char* fmt, ...);
 
 __declspec(dllexport) int main();
 int main()
@@ -28,7 +31,7 @@ int main()
     return 0;
 }
 
-bool hook(void* toHook, void* ourFunct, size_t len) {
+bool hook(void* toHook, void* ourFunct, size_t len, bool as_call) {
     if (len < 5) {
         log("ERROR: toHook is less than 5 bytes");
         return false;
@@ -42,7 +45,7 @@ bool hook(void* toHook, void* ourFunct, size_t len) {
 
     memset(toHook, 0x90, len);
     DWORD relativeAddress = ((DWORD)ourFunct - (DWORD)toHook) - 5;
-    *(BYTE*)toHook = 0xE9;
+    *(BYTE*)toHook = as_call ? 0xE8 : 0xE9; // E8 - call, E9 - jmp
     *(DWORD*)((DWORD)toHook + 1) = relativeAddress;
 
     DWORD temp;
@@ -54,7 +57,7 @@ bool hook(void* toHook, void* ourFunct, size_t len) {
     return true;
 }
 
-bool replaceMemory(void* dest, void* source, size_t len) {
+bool writeMem(void* dest, void* source, size_t len) {
     DWORD curProtection;
     if (!VirtualProtect(dest, len, PAGE_EXECUTE_READWRITE, &curProtection)) {
         log("ERROR: VirtualProtect failed to override protection, error code: %i. aborting...", GetLastError());
@@ -72,13 +75,19 @@ bool replaceMemory(void* dest, void* source, size_t len) {
     return true;
 }
 
-void onHudLoaded() {
-    CRenderer** renderer = (CRenderer**)0x9A557C;
-    if (renderer == NULL && *renderer == NULL) {
-        log("ERROR: CRenderer object not found");
-        return;
+bool fixHud() {
+    dice::CHudManager* hudManager = *(dice::CHudManager**)0xA10890;
+    if (hudManager == nullptr || hudManager->miniMap == nullptr) {
+        log("WARNING: HudManager not initialized");
+        return false;
     }
-    float aspect_ratio = (float)(*renderer)->screenWidth / (float)(*renderer)->screenHeight;
+
+    dice::CRenderer* renderer = *(dice::CRenderer**)0x9A557C;
+    if (renderer == nullptr) {
+        log("ERROR: Renderer not found");
+        return false;
+    }
+    float aspect_ratio = (float)renderer->screenWidth / (float)renderer->screenHeight;
     float newWidth = 600 * aspect_ratio;
     float newMouseOffset = -newWidth / 2;
     DWORD hudWidth = *(reinterpret_cast<DWORD*>(&newWidth));
@@ -87,16 +96,16 @@ void onHudLoaded() {
 
     // this will squish the entire HUD into 4:3 area in the screen center
     log("Changing HUD width to %f (0x%x)", newWidth, hudWidth);
-    replaceMemory((void*)0x7AD489, (void*)&hudWidth, 4);
+    writeMem((void*)0x7AD489, (void*)&hudWidth, 4);
     // after destreatching HUD mouse movement will be restricted, this will extend it to the correct width
     log("Extending mouse area to %f (0x%x)", newWidth, hudWidth);
-    replaceMemory((void*)0x752B56, (void*)&hudWidth, 4);
+    writeMem((void*)0x752B56, (void*)&hudWidth, 4);
     // this is for offsettig the extended mouse area to the left so it'll fit in the screen
     log("Applying mouse area offset to %f (%x)", newMouseOffset, mouseOffset);
-    replaceMemory((void*)0x752B94, (void*)&mouseOffset, 4);
+    writeMem((void*)0x752B94, (void*)&mouseOffset, 4);
     // fixes bug with corssiar going nuts when proning/standing up
     BYTE tmp1 = 0xEB;
-    replaceMemory((void*)0x7A5763, &tmp1, 1);
+    writeMem((void*)0x7A5763, &tmp1, 1);
     // fixes AA markers being in wrong position
     // BYTE tmp2[] = { 0xD9, 0x05, 0xF4, 0xF9, 0x4B, 0x00, 0x90, 0x90, 0x90 };
     // replaceMemory((void*)0x7CCDD3, tmp2, 9);
@@ -139,26 +148,58 @@ void onHudLoaded() {
     }
 
     if (g_offsetMinimap) {
-        tmp = meme::findNode("Minimap");
-        if (tmp != nullptr) {
-            meme::MapNode* mapnode = (meme::MapNode*)tmp->getNodePtr();
-            mapnode->resetX += hudOffset;
-        }
-        else
-            log("ERROR: Minimap Not Found!");
+        hudManager->miniMap->resetX += hudOffset;
     }
+
+    return true;
 }
 
-void __declspec(naked) toHudManagerRefreshHook() {
-    __asm {
-        pushfd
-        call onHudLoaded
-        popfd
-        // original code
-        mov[esi], al
-        mov eax, esi
-        pop esi
-        jmp[g_hudManagerRefreshHookExit]
+class BF2Engine;
+bool(__thiscall* BF2Engine_initEngine)(BF2Engine* _this) = (bool(__thiscall*)(BF2Engine*))0x408EF0;
+
+bool __fastcall BF2Engine_initEngine_hook(BF2Engine* _this) {
+    bool res = BF2Engine_initEngine(_this);
+    fixHud();
+    return res;
+}
+
+void readConfig(const wchar_t* dlldir) {
+    wchar_t configPath[MAX_PATH];
+    wcscpy_s(configPath, dlldir);
+    wcscat_s(configPath, CONFIG_PATH);
+    std::ifstream config;
+    config.open(configPath, std::ifstream::in);
+    if (config.is_open())
+    {
+        std::string line;
+        while (getline(config, line))
+        {
+            line = line.substr(0, line.find("#")); // comment
+            std::vector<std::string> splited;
+            std::istringstream iss(line);
+            for (std::string line; iss >> line; )
+                splited.push_back(line);
+
+            log("%s", line.c_str());
+            if (splited.size() != 0) {
+                if (splited.at(0) == "offset_right" && splited.size() == 2) {
+                    g_nodesRight.insert(splited.at(1));
+                }
+                else if (splited.at(0) == "offset_left" && splited.size() == 2) {
+                    g_nodesLeft.insert(splited.at(1));
+                }
+                else if (splited.at(0) == "fill_left" && splited.size() == 2) {
+                    g_nodesFillLeft.insert(splited.at(1));
+                }
+                else if (splited.at(0) == "fill_right" && splited.size() == 2) {
+                    g_nodesFillRight.insert(splited.at(1));
+                }
+                else if (splited.at(0) == "offset_minimap" && splited.size() == 2) {
+                    g_offsetMinimap = (bool)std::stoi(splited.at(1));
+                }
+            }
+        }
+        config.close();
     }
 }
 
@@ -167,71 +208,37 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved) {
     HMODULE hExe = GetModuleHandle(0);
     switch (dwReason) {
     case DLL_PROCESS_ATTACH:
-        char* dlldir = new char[MAX_PATH];
+        wchar_t dlldir[MAX_PATH];
         GetModuleFileName(hModule, dlldir, MAX_PATH);
-        for (int i = strlen(dlldir); i > 0; i--) { if (dlldir[i] == '\\') { dlldir[i + 1] = 0; break; } }
+        for (int i = wcslen(dlldir); i > 0; i--) { if (dlldir[i] == '\\') { dlldir[i + 1] = 0; break; } }
 
-        bool debug = false;
+        readConfig(dlldir);
 
-        char configPath[MAX_PATH];
-        strcpy_s(configPath, dlldir);
-        strcat_s(configPath, CONFIG_PATH);
-        std::ifstream config;
-        config.open(configPath, std::ifstream::in);
-        if (config.is_open())
-        {
-            std::string line;
-            while (getline(config, line))
-            {
-                line = line.substr(0, line.find("#")); // comment
-                std::vector<std::string> splited;
-                std::istringstream iss(line);
-                for (std::string line; iss >> line; )
-                    splited.push_back(line);
+#ifdef _DEBUG
+        wchar_t log_path[MAX_PATH];
+        wcscpy_s(log_path, dlldir);
+        wcscat_s(log_path, L"hudfixlog.txt");
+        g_logfile.open(log_path, std::ios::app);
+        log("\n---------------------\nBF2 stretched HUD FIX v0.5\n---------------------");
+#endif
 
-                log("%s", line.c_str());
-                if (splited.size() != 0) {
-                    if (splited.at(0) == "debug" && splited.size() == 2) {
-                        debug = (bool)std::stoi(splited.at(1));
-                    }
-                    else if (splited.at(0) == "offset_right" && splited.size() == 2) {
-                        g_nodesRight.insert(splited.at(1));
-                    }
-                    else if (splited.at(0) == "offset_left" && splited.size() == 2) {
-                        g_nodesLeft.insert(splited.at(1));
-                    }
-                    else if (splited.at(0) == "fill_left" && splited.size() == 2) {
-                        g_nodesFillLeft.insert(splited.at(1));
-                    }
-                    else if (splited.at(0) == "fill_right" && splited.size() == 2) {
-                        g_nodesFillRight.insert(splited.at(1));
-                    }
-                    else if (splited.at(0) == "offset_minimap" && splited.size() == 2) {
-                        g_offsetMinimap = (bool)std::stoi(splited.at(1));
-                    }
-                }
-            }
-            config.close();
+        if (!fixHud()) {
+            // injected to early, try after engine init
+            hook((void*)0x40C519, BF2Engine_initEngine_hook, 5, true);
         }
 
-        if (debug) {
-            char log_path[MAX_PATH];
-            strcpy_s(log_path, dlldir);
-            strcat_s(log_path, "hudfixlog.txt");
-            g_logfile.open(log_path, std::ios::app);
-            log("\n---------------------\nBF2 stretched HUD FIX v0.4\n---------------------");
-        }
-
-        // hudManager.refresh needs to be added at the end of the HudSetupMain.con
-        log("Hooking hudManager.refresh");
-        hook((void*)g_hudManagerRefreshHookEntry, toHudManagerRefreshHook, g_hudManagerRefreshHookExit - g_hudManagerRefreshHookEntry);
-
+        break;
+    case DLL_PROCESS_DETACH:
+        hook((void*)0x40C519, (void*)0x408EF0, 5, true);
+        break;
+    default:
         break;
     }
 
     return TRUE;
 }
 
+#ifdef _DEBUG
 void __cdecl log(const char* fmt, ...)
 {
     if (g_logfile.is_open())
@@ -260,4 +267,7 @@ void __cdecl log(const char* fmt, ...)
         g_logfile << "[" << timestamp_buf << "] " << logbuf << std::endl;
     }
 }
+#else
+void __cdecl log(const char* fmt, ...) { }
+#endif // DEBUG
 

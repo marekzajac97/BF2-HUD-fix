@@ -2,12 +2,10 @@
 ## About
 Simple hack that adjusts HUD to the correct aspect ratio and fixes stretching. You can see how it works [here](https://www.youtube.com/watch?v=Mv0N_RxxfDI)
 
-This is a remake of one of the features from an old **RFX.dll** by [BadSanta12345](github.com/BadSanta12345). Although [his source code](https://www.github.com/BadSanta12345/RFX/) is publicly available it sadly does not include the fix for stretched HUD. Also, the original RFX.dll from Alpha Project has several issues (crashes in fullscreen mode and when hitting disconnect, restricted cursor movement). I managed to rewrite it using parts of his code and some reverse engineering.
+Credits to [BadSanta12345](github.com/BadSanta12345) who made the original fix for Alpha Project mod, but it doesn't work properly anymore.
 
 ## Download
-Head over to [Releases](https://github.com/marekzajac97/BF2-HUD-fix/releases/) for a download link. Works only with BF2 v1.5 patch. To run it you need MS VC++ 2019 Redistributable (x86) installed on your system.
+Head over to [Releases](https://github.com/marekzajac97/BF2-HUD-fix/releases/) for a download link. Requires BF2 v1.5 patch & MS VC++ 2019 Redistributable (x86) installed on your system.
 
 ## Installation
-Copy the `hudfix.dll`, `BF2.exe` and `hud_config.txt` to the main Battlefield 2 folder. Copy the contents of the `Menu_server` folder into `Battlefield 2\mods\bf2\Menu_server.zip`
-
-Note: BF2.exe is a regular executable with modified IAT, alternatively you can use an DLL injector.
+Copy the `hudfix.asi`, `dinput8.dll` and `hud_config.txt` to the main Battlefield 2 folder. Copy the contents of the `Menu_server` folder into `Battlefield 2\mods\bf2\Menu_server.zip` archive.
