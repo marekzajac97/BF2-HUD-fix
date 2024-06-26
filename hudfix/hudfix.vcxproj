@@ -153,6 +153,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Bf2String.h" />
     <ClInclude Include="CHudManager.h" />
     <ClInclude Include="CRenderer.h" />
     <ClInclude Include="framework.h" />

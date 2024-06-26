@@ -1,0 +1,49 @@
+clone Chat IngameHudRight
+clone Chat IngameHudLeft
+
+make_movable IngameHudRight
+make_movable IngameHudLeft
+make_movable Chat
+make_movable BottomRightAnimateHud
+make_movable BottomRightStaticHud
+make_movable BottomLeftStaticHud
+make_movable BottomLeftAnimateHud
+
+override_parent ItemSelectionHud IngameHudRight
+override_parent WarningIconBackground IngameHudRight
+override_parent WarningIcon IngameHudRight
+override_parent CloseToMedicBackground IngameHudRight
+override_parent CloseToMedic IngameHudRight
+override_parent CloseToRepairBackground IngameHudRight
+override_parent CloseToRepair IngameHudRight
+override_parent CloseToAmmoBackground IngameHudRight
+override_parent CloseToAmmo IngameHudRight
+override_parent CloseToMineBackground IngameHudRight
+override_parent CloseToMine IngameHudRight
+override_parent ParachuteIcon IngameHudRight
+override_parent ParachuteBackground IngameHudRight
+override_parent MedalArea IngameHudRight
+override_parent MinSizeAlpha IngameHudRight
+override_parent MinSizeMap IngameHudRight
+override_parent TicketInfo IngameHudRight
+override_parent VoipList IngameHudLeft
+override_parent IngameChatInput IngameHudLeft
+override_parent PlayerNames IngameHudLeft
+
+offset_right IngameHudRight
+offset_right BottomRightAnimateHud
+offset_right BottomRightStaticHud
+offset_left Chat
+offset_left IngameHudLeft
+offset_left BottomLeftStaticHud
+offset_left BottomLeftAnimateHud
+offset_minimap 1
+
+keep_stretched Ah1zTVFrame
+keep_stretched F15TVFrame
+keep_stretched F18TVFrame
+keep_stretched HavocTVFrame
+keep_stretched Su30TVFrame
+keep_stretched Su34TVFrame
+keep_stretched Z10TVFrame
+keep_stretched WhiteOutScreen

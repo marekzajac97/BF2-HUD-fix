@@ -3,11 +3,13 @@
 #include "HudNodes.h"
 #include "CRenderer.h"
 #include "CHudManager.h"
+#include "Bf2String.h"
 #include <string>
 #include <vector>
 #include <sstream>
 #include <chrono>
 #include <set>
+#include <map>
 #include <fstream>
 
 static_assert(sizeof(void*) == 4, "don't");
@@ -19,6 +21,11 @@ std::set<std::string> g_nodesRight;
 std::set<std::string> g_nodesLeft;
 std::set<std::string> g_nodesFillRight;
 std::set<std::string> g_nodesFillLeft;
+std::set<std::string> g_nodesMakeMovable;
+std::map<std::string, std::set<std::string>> g_nodesClone;
+std::map<std::string, std::string> g_nodesOverrideParent;
+std::set<std::string> g_nodesKeepStretched;
+
 bool g_offsetMinimap = true;
 
 // logging
@@ -147,6 +154,16 @@ bool fixHud() {
             log("ERROR: %s Not Found!", (*it).c_str());
     }
 
+    // Keep fullscreen overlays stretched
+    for (std::set<std::string>::iterator it = g_nodesKeepStretched.begin(); it != g_nodesKeepStretched.end(); ++it) {
+        if ((tmp = meme::findNode((*it).c_str())) != nullptr) {
+            tmp->setNodeSize(tmp->getNodeSizeX() * aspect_ratio / 1.333333f, tmp->getNodeSizeY());
+            tmp->setNodePos(tmp->getNodePosX() - hudOffset, tmp->getNodePosY());
+        }
+        else
+            log("ERROR: %s Not Found!", (*it).c_str());
+    }
+
     if (g_offsetMinimap) {
         hudManager->miniMap->resetX += hudOffset;
     }
@@ -156,6 +173,66 @@ bool fixHud() {
 
 class BF2Engine;
 bool(__thiscall* BF2Engine_initEngine)(BF2Engine* _this) = (bool(__thiscall*)(BF2Engine*))0x408EF0;
+
+class Bf2HudBuilder;
+bool(__thiscall* Bf2HudBuilder_createSplitNode)(Bf2HudBuilder* _this, dice::std::string parent, dice::std::string node) = (bool(__thiscall*)(Bf2HudBuilder*, dice::std::string, dice::std::string))0x79C420;
+bool(__thiscall* Bf2HudBuilder_createTransformNode)(Bf2HudBuilder* _this, dice::std::string parent, dice::std::string node, int x, int y, int wx, int wy) = (bool(__thiscall*)(Bf2HudBuilder *, dice::std::string, dice::std::string, int, int, int, int))0x79C2E0;
+bool(__thiscall* Bf2HudBuilder_createPictureNode)(Bf2HudBuilder* _this, dice::std::string parent, dice::std::string node, int x, int y, int wx, int wy) = (bool(__thiscall*)(Bf2HudBuilder*, dice::std::string, dice::std::string, int, int, int, int))0x79D050;
+
+bool __fastcall Bf2HudBuilder_createPictureNode_hook(Bf2HudBuilder* _this, int, dice::std::string parent, dice::std::string node, int x, int y, int wx, int wy) {
+    if (g_nodesOverrideParent.count(node.c_str())) {
+        dice::std::string newParent = g_nodesOverrideParent.at(node.c_str()).c_str();
+        log("Overriding parent for node %s from %s to %s", node.c_str(), parent.c_str(), newParent.c_str());
+        return Bf2HudBuilder_createPictureNode(_this, newParent, node, x, y, wx, wy);
+    }
+    return Bf2HudBuilder_createPictureNode(_this, parent, node, x, y, wx, wy);
+}
+
+bool __fastcall Bf2HudBuilder_createTransformNode_hook(Bf2HudBuilder* _this, int, dice::std::string parent, dice::std::string node, int x, int y, int wx, int wy) {
+
+    dice::std::string* overrideParent;
+    dice::std::string newParent;
+
+    if (g_nodesOverrideParent.count(node.c_str())) {
+        newParent = g_nodesOverrideParent.at(node.c_str()).c_str();
+        log("Overriding parent for node %s from %s to %s", node.c_str(), parent.c_str(), newParent.c_str());
+        overrideParent = &newParent;
+    }
+    else {
+        overrideParent = &parent;
+    }
+
+    if (g_nodesClone.count(node.c_str())) {
+        std::set<std::string>& nodesToCreate = g_nodesClone.at(node.c_str());
+        for (const std::string& nodeToCreate : nodesToCreate) {
+            log("Creating new TransformNode %s %s", overrideParent->c_str(), nodeToCreate.c_str());
+            dice::std::string clonedNode = nodeToCreate.c_str();
+            Bf2HudBuilder_createTransformNode(_this, *overrideParent, clonedNode, x, y, wx, wy);
+        }
+    }
+
+    return Bf2HudBuilder_createTransformNode(_this, *overrideParent, node, x, y, wx, wy);
+}
+
+bool __fastcall Bf2HudBuilder_createSplitNode_hook(Bf2HudBuilder* _this, int, dice::std::string parent, dice::std::string node) {
+    dice::std::string* overrideParent;
+    dice::std::string newParent;
+
+    if (g_nodesOverrideParent.count(node.c_str())) {
+        newParent = g_nodesOverrideParent.at(node.c_str()).c_str();
+        log("Overriding parent for node %s from %s to %s", node.c_str(), parent.c_str(), newParent.c_str());
+        overrideParent = &newParent;
+    }
+    else {
+        overrideParent = &parent;
+    }
+
+    if (g_nodesMakeMovable.count(node.c_str())) {
+        log("Overriding type of node %s from SplitNode to TransformNode", node.c_str());
+        return Bf2HudBuilder_createTransformNode_hook(_this, NULL, *overrideParent, node, 0, 0, 600, 800);
+    }
+    return Bf2HudBuilder_createSplitNode(_this, *overrideParent, node);
+}
 
 bool __fastcall BF2Engine_initEngine_hook(BF2Engine* _this) {
     bool res = BF2Engine_initEngine(_this);
@@ -197,6 +274,18 @@ void readConfig(const wchar_t* dlldir) {
                 else if (splited.at(0) == "offset_minimap" && splited.size() == 2) {
                     g_offsetMinimap = (bool)std::stoi(splited.at(1));
                 }
+                else if (splited.at(0) == "clone" && splited.size() == 3) {
+                    g_nodesClone[splited.at(1)].insert(splited.at(2));
+                }
+                else if (splited.at(0) == "make_movable" && splited.size() == 2) {
+                    g_nodesMakeMovable.insert(splited.at(1));
+                }
+                else if (splited.at(0) == "override_parent" && splited.size() == 3) {
+                    g_nodesOverrideParent.insert(::std::make_pair(splited.at(1), splited.at(2)));
+                }
+                else if (splited.at(0) == "keep_stretched" && splited.size() == 2) {
+                    g_nodesKeepStretched.insert(splited.at(1));
+                }
             }
         }
         config.close();
@@ -219,13 +308,13 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved) {
         wcscpy_s(log_path, dlldir);
         wcscat_s(log_path, L"hudfixlog.txt");
         g_logfile.open(log_path, std::ios::app);
-        log("\n---------------------\nBF2 stretched HUD FIX v0.5\n---------------------");
+        log("\n---------------------\nBF2 stretched HUD FIX v0.6\n---------------------");
 #endif
 
-        if (!fixHud()) {
-            // injected to early, try after engine init
-            hook((void*)0x40C519, BF2Engine_initEngine_hook, 5, true);
-        }
+        hook((void*)0x40C519, BF2Engine_initEngine_hook, 5, true);
+        hook((void*)0x762054, Bf2HudBuilder_createSplitNode_hook, 5, true);
+        hook((void*)0x761D8A, Bf2HudBuilder_createTransformNode_hook, 5, true);
+        hook((void*)0x7659BF, Bf2HudBuilder_createPictureNode_hook, 5, true);
 
         break;
     case DLL_PROCESS_DETACH:
