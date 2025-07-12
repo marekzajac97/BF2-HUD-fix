@@ -156,6 +156,7 @@
     <ClInclude Include="Bf2String.h" />
     <ClInclude Include="CHudManager.h" />
     <ClInclude Include="CRenderer.h" />
+    <ClInclude Include="CRenderView.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="HudNodes.h" />
     <ClInclude Include="pch.h" />

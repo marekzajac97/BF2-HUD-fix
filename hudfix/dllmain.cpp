@@ -2,6 +2,7 @@
 
 #include "HudNodes.h"
 #include "CRenderer.h"
+#include "CRenderView.h"
 #include "CHudManager.h"
 #include "Bf2String.h"
 #include <string>
@@ -17,6 +18,8 @@ static_assert(sizeof(void*) == 4, "don't");
 #define CONFIG_PATH L"hud_config.txt"
 
 // config
+bool g_fixFov = true;
+float g_fovScale = 1.0f;
 std::set<std::string> g_nodesRight;
 std::set<std::string> g_nodesLeft;
 std::set<std::string> g_nodesFillRight;
@@ -80,6 +83,10 @@ bool writeMem(void* dest, void* source, size_t len) {
     }
 
     return true;
+}
+
+bool writePtr(void* dest, void* source) {
+    return writeMem(dest, &source, 4);
 }
 
 bool fixHud() {
@@ -171,6 +178,88 @@ bool fixHud() {
     return true;
 }
 
+void __fastcall RenderView__setFovSafe(dice::CRenderView* _this, float fov) {
+
+    static constexpr float AR_21_9 = 2560.0f / 1080.0f;
+    // static constexpr float AR_16_9 = 16.0f / 9.0f;
+    static constexpr float AR_5_4 = 5.0f / 4.0f;
+
+    // limit fov if wider than 21:9 (NOTE: vBF2 did a check for 16:9 here)
+    if (_this->invAspectRatio <= (1.0f / AR_21_9))
+    {
+        _this->setFov(fov * _this->invAspectRatio * AR_21_9 * g_fovScale);
+        return;
+    }
+    // limit fov if taller than 5:4
+    if (_this->invAspectRatio >= (1.0f / AR_5_4))
+    {
+        _this->setFov(fov * _this->invAspectRatio * AR_5_4 * g_fovScale);
+        return;
+    }
+
+    _this->setFov(fov * g_fovScale);
+}
+
+struct Terrain {
+    char _0x00[0x730];
+    unsigned int currentPatchIndex; // 0x730
+};
+
+using Terrain__drawWaterPatch_t = void(__thiscall*)(Terrain*, float, int, float, float, void*);
+Terrain__drawWaterPatch_t Terrain__drawWaterPatch = nullptr;
+
+// this fixes CTD when drawing too many water patches
+// there is a fixed array of 256 instance params but it can overflow especially on ultrawide FOV
+void __fastcall Terrain__drawWaterPatch_hook(Terrain* _this, /*edx*/int, float a1, int a2, float a3, float a4, void* a5) {
+    if (_this->currentPatchIndex >= 256) {
+        return;
+    }
+    Terrain__drawWaterPatch(_this, a1, a2, a3, a4, a5);
+}
+
+void fixFov() {
+    if (!g_fixFov) {
+        return;
+    }
+    HMODULE hModule = GetModuleHandleA("RendDX9.dll");
+    if (!hModule) {
+        log("ERROR: RendDX9.dll not found");
+        return;
+    }
+
+    const DWORD patch_150_rva = 0x74240;
+    const DWORD patch_151_rva = 0x74910;
+    FARPROC deinitDLL = GetProcAddress(hModule, "deinitDll");
+    DWORD deinitDLL_RVA = (DWORD)deinitDLL - (DWORD)hModule;
+
+    bool is150;
+    if (patch_151_rva == deinitDLL_RVA) {
+        is150 = false; // version with "Alt-tab fix", this was either DICE hotfix or RendDX9.dll from BF2142 (I think?)
+    }
+    else if (patch_150_rva == deinitDLL_RVA) {
+        is150 = true; // original 1.50 patch
+    }
+    else {
+        ::std::wstringstream ss;
+        ss << L"RendDX9.dll::deinitDLL unknown RVA = 0x" << ::std::uppercase << ::std::hex << deinitDLL_RVA << L". Update your game to patch 1.50 ";
+        MessageBox(NULL, ss.str().c_str(), L"Error!", MB_OK);
+        exit(877);
+        return;
+    }
+
+    uintptr_t rendDX9_dll = (uintptr_t)hModule;
+
+    writePtr((void*)(rendDX9_dll + 0x21C980), RenderView__setFovSafe);
+    if (is150) {
+        Terrain__drawWaterPatch = (Terrain__drawWaterPatch_t)(rendDX9_dll + 0xDC400);
+        hook((void*)(rendDX9_dll + 0xDCD7F), Terrain__drawWaterPatch_hook, 5, true);
+    }
+    else {
+        Terrain__drawWaterPatch = (Terrain__drawWaterPatch_t)(rendDX9_dll + 0xDCA60);
+        hook((void*)(rendDX9_dll + 0xDD3DF), Terrain__drawWaterPatch_hook, 5, true);
+    }
+}
+
 class BF2Engine;
 bool(__thiscall* BF2Engine_initEngine)(BF2Engine* _this) = (bool(__thiscall*)(BF2Engine*))0x408EF0;
 
@@ -237,6 +326,7 @@ bool __fastcall Bf2HudBuilder_createSplitNode_hook(Bf2HudBuilder* _this, int, di
 bool __fastcall BF2Engine_initEngine_hook(BF2Engine* _this) {
     bool res = BF2Engine_initEngine(_this);
     fixHud();
+    fixFov();
     return res;
 }
 
@@ -286,6 +376,12 @@ void readConfig(const wchar_t* dlldir) {
                 else if (splited.at(0) == "keep_stretched" && splited.size() == 2) {
                     g_nodesKeepStretched.insert(splited.at(1));
                 }
+                else if (splited.at(0) == "fix_fov" && splited.size() == 2) {
+                    g_fixFov = (bool)std::stoi(splited.at(1));
+                }
+                else if (splited.at(0) == "fov_scale" && splited.size() == 2) {
+                    g_fovScale = (bool)std::stof(splited.at(1));
+                }
             }
         }
         config.close();
@@ -308,7 +404,7 @@ BOOL WINAPI DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved) {
         wcscpy_s(log_path, dlldir);
         wcscat_s(log_path, L"hudfixlog.txt");
         g_logfile.open(log_path, std::ios::app);
-        log("\n---------------------\nBF2 stretched HUD FIX v0.6\n---------------------");
+        log("\n---------------------\nBF2 stretched HUD FIX v0.7\n---------------------");
 #endif
 
         hook((void*)0x40C519, BF2Engine_initEngine_hook, 5, true);

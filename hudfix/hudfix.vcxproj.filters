@@ -36,6 +36,9 @@
     <ClInclude Include="Bf2String.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="CRenderView.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
